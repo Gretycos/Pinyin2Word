@@ -5,6 +5,7 @@ Usage:
     run.py train --train-src=<file> --train-tgt=<file> --dev-src=<file> --dev-tgt=<file> --vocab=<file> [options]
     run.py decode [options] MODEL_PATH TEST_SOURCE_FILE OUTPUT_FILE
     run.py decode [options] MODEL_PATH TEST_SOURCE_FILE TEST_TARGET_FILE OUTPUT_FILE
+    run.py decode [options] MODEL_PATH SENTENCE
 
 Options:
     -h --help                               show this screen.
@@ -27,18 +28,19 @@ Options:
     --lr-decay=<float>                      learning rate decay [default: 0.5]
     --beam-size=<int>                       beam size [default: 5]
     --sample-size=<int>                     sample size [default: 5]
-    --lr=<float>                            learning rate [default: 0.001]
+    --lr=<float>                            learning rate [default: 0.002]
     --uniform-init=<float>                  uniformly initialize all parameters [default: 0.1]
     --save-to=<file>                        model save path [default: model.bin]
     --valid-niter=<int>                     perform validation after how many iterations [default: 2000]
     --dropout=<float>                       dropout [default: 0.3]
-    --max-decoding-time-step=<int>          maximum number of decoding time steps [default: 70]
+    --max-decoding-time-step=<int>          maximum number of decoding time steps [default: 350]
 """
 import math
 import sys
 import pickle
 import time
 import os
+from collections import Counter
 
 
 from docopt import docopt
@@ -47,6 +49,8 @@ from nmt_model import Hypothesis, NMT
 import numpy as np
 from typing import List, Tuple, Dict, Set, Union
 from tqdm import tqdm
+
+from pinyin_split import PinyinSplit
 from utils import read_corpus, batch_iter
 from vocab import Vocab, VocabEntry
 
@@ -94,6 +98,61 @@ def compute_corpus_level_bleu_score(references: List[List[str]], hypotheses: Lis
     bleu_score = corpus_bleu([[ref] for ref in references],
                              [hyp.value for hyp in hypotheses])
     return bleu_score
+
+def evaluate_ca_hrf(references: List[List[str]], hypotheses: List[Hypothesis]):
+    if references[0][0] == '<s>':
+        references = [ref[1:-1] for ref in references]
+    cum_ca = 0
+    sent_num = len(references)
+    correct_sent = 0
+
+    for i in range(sent_num):
+        ref = Counter(references[i])
+        ref_dict = { w:v for w, v in ref.items()} # 统计ref词频
+        hyp = Counter(hypotheses[i].value)
+        hyp_dict = { w:v for w, v in hyp.items()} # 统计hyp词频
+
+        sum_h = 0 # 分子
+        sum_r = 0 # 分母
+        for h in hyp_dict:
+            if h in ref_dict:
+                sum_h += hyp_dict[h] # 统计命中的词数
+        for r in ref_dict:
+            sum_r += ref_dict[r]
+        if sum_h == sum_r: # 完全命中
+            correct_sent += 1
+        cum_ca += sum_h/sum_r
+
+    avg_ca = cum_ca / sent_num
+    hrf = correct_sent / sent_num
+
+    return avg_ca, hrf
+
+def evaluate_khrf(references: List[List[str]],hypotheses: List[List[Hypothesis]]):
+    if references[0][0] == '<s>':
+        references = [ref[1:-1] for ref in references]
+    sent_num = len(references)
+    correct_sent = 0
+    for i in range(sent_num):
+        ref = Counter(references[i])
+        ref_dict = {w: v for w, v in ref.items()}  # 统计ref词频
+        sum_r = 0
+        for r in ref_dict:
+            sum_r += ref_dict[r]
+
+        for j in range(len(hypotheses[i])): # k个候选句
+            sum_h = 0
+            hyp = Counter(hypotheses[i][j].value)
+            hyp_dict = {w: v for w, v in hyp.items()}  # 统计hyp词频
+            for h in hyp_dict:
+                if h in ref_dict:
+                    sum_h += hyp_dict[h]  # 统计命中的词数
+            if sum_h == sum_r:
+                correct_sent += 1
+                break # 有一个命中就break，进入下一个句子
+
+    khrf = correct_sent / sent_num
+    return khrf
 
 
 def train(args: Dict):
@@ -272,9 +331,13 @@ def decode(args: Dict[str, str]):
         如果给定标准句子，函数海湖计算BLEU得分.
     @param args (Dict): 命令行参数
     """
+    if args['SENTENCE']:
+        ps = PinyinSplit()
+        test_data_src = [ps.split(args['SENTENCE'])]
+    if args['TEST_SOURCE_FILE']:
+        print("load test source sentences from [{}]".format(args['TEST_SOURCE_FILE']), file=sys.stderr)
+        test_data_src = read_corpus(args['TEST_SOURCE_FILE'], source='src')
 
-    print("load test source sentences from [{}]".format(args['TEST_SOURCE_FILE']), file=sys.stderr)
-    test_data_src = read_corpus(args['TEST_SOURCE_FILE'], source='src')
     if args['TEST_TARGET_FILE']:
         print("load test target sentences from [{}]".format(args['TEST_TARGET_FILE']), file=sys.stderr)
         test_data_tgt = read_corpus(args['TEST_TARGET_FILE'], source='tgt')
@@ -285,20 +348,33 @@ def decode(args: Dict[str, str]):
     if args['--cuda']:
         model = model.to(torch.device("cuda:0"))
 
+    beam_size = int(args['--beam-size'])
     hypotheses = beam_search(model, test_data_src,
-                             beam_size=int(args['--beam-size']),
+                             beam_size=beam_size,
                              max_decoding_time_step=int(args['--max-decoding-time-step']))
 
     if args['TEST_TARGET_FILE']:
         top_hypotheses = [hyps[0] for hyps in hypotheses] # 每句话转汉字的首选项形成的列表
-        bleu_score = compute_corpus_level_bleu_score(test_data_tgt, top_hypotheses) # 打分
-        print('Corpus BLEU: {}'.format(bleu_score * 100), file=sys.stderr)
+        avg_ca,hrf = evaluate_ca_hrf(test_data_tgt,top_hypotheses)
+        khrf = evaluate_khrf(test_data_tgt,hypotheses)
+        # bleu_score = compute_corpus_level_bleu_score(test_data_tgt, top_hypotheses) # 打分
+        # print('Corpus BLEU: {}'.format(bleu_score * 100), file=sys.stderr)
+        print('avg_ca: {}'.format(avg_ca),file=sys.stderr)
+        print('hrf: {}'.format(hrf), file=sys.stderr)
+        print('{}hrf: {}'.format(beam_size,khrf), file=sys.stderr)
 
-    with open(args['OUTPUT_FILE'], 'w') as f:
-        for src_sent, hyps in zip(test_data_src, hypotheses):
-            top_hyp = hyps[0]
-            hyp_sent = ''.join(top_hyp.value)
-            f.write(hyp_sent + '\n')
+    if args['OUTPUT_FILE']:
+        with open(args['OUTPUT_FILE'], 'w') as f:
+            for src_sent, hyps in zip(test_data_src, hypotheses):
+                top_hyp = hyps[0]
+                hyp_sent = ''.join(top_hyp.value)
+                f.write(hyp_sent + '\n')
+
+    if args['SENTENCE']:
+        print('source sentence: {}'.format(args['SENTENCE']))
+        for i in range(len(hypotheses[0])):
+            result = ''.join(hypotheses[0][i].value)
+            print('top_{}_hypotheses_{}: {}'.format(beam_size,i+1,result))
 
 
 def beam_search(model: NMT, test_data_src: List[List[str]], beam_size: int, max_decoding_time_step: int) -> List[List[Hypothesis]]:
