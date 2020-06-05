@@ -23,12 +23,12 @@ from utils import read_corpus, pad_sents
 
 
 class VocabEntry(object):
-    """ Vocabulary Entry, i.e. structure containing either
-    src or tgt language terms.
+    """ 词汇表结构
+    包含src或者tgt
     """
     def __init__(self, word2id=None):
-        """ Init VocabEntry Instance.
-        @param word2id (dict): dictionary mapping words 2 indices
+        """ 初始化词汇表实例
+        @param word2id (dict): 文字映射到下标的字典
         """
         if word2id:
             self.word2id = word2id # 词->索引的字典
@@ -42,48 +42,46 @@ class VocabEntry(object):
         self.id2word = {v: k for k, v in self.word2id.items()} # 索引->词的字典
 
     def __getitem__(self, word):
-        """ Retrieve word's index. Return the index for the unk
-        token if the word is out of vocabulary.
-        @param word (str): word to look up.
-        @returns index (int): index of word
+        """ 得到词下标，如果下标不存在则返回<unk>标记
+        @param word (str): 需要查询的词
+        @returns index (int): 词下标
         """
         return self.word2id.get(word, self.unk_id) # 如果不存在则返回unk token
 
     def __contains__(self, word):
-        """ Check if word is captured by VocabEntry.
-        @param word (str): word to look up
-        @returns contains (bool): whether word is contained
+        """ 检查词是否在词汇表里
+        @param word (str): 需要查询的词
+        @returns contains (bool): 是否包含在词表
         """
         return word in self.word2id
 
     def __setitem__(self, key, value):
-        """ Raise error, if one tries to edit the VocabEntry.
+        """ 如果尝试编辑词表返回异常
         """
         raise ValueError('vocabulary is readonly')
 
     def __len__(self):
-        """ Compute number of words in VocabEntry.
-        @returns len (int): number of words in VocabEntry
+        """ 计算词表的长度
+        @returns len (int): 词表的长度
         """
         return len(self.word2id)
 
     def __repr__(self):
-        """ Representation of VocabEntry to be used
-        when printing the object.
+        """ 词表的描述
         """
         return 'Vocabulary[size=%d]' % len(self)
 
     def id2word(self, wid):
-        """ Return mapping of index to word.
-        @param wid (int): word index
-        @returns word (str): word corresponding to index
+        """ 返回下标映射词的结果
+        @param wid (int): 词下标
+        @returns word (str): 对应的词
         """
         return self.id2word[wid]
 
     def add(self, word):
-        """ Add word to VocabEntry, if it is previously unseen.
-        @param word (str): word to add to VocabEntry
-        @return index (int): index that the word has been assigned
+        """ 添加没有在词表中的词
+        @param word (str): 准备添加到词表里面的词
+        @return index (int): 分配好的下标
         """
         if word not in self:
             wid = self.word2id[word] = len(self)
@@ -93,10 +91,9 @@ class VocabEntry(object):
             return self[word]
 
     def words2indices(self, sents):
-        """ Convert list of words or list of sentences of words
-        into list or list of list of indices.
-        @param sents (list[str] or list[list[str]]): sentence(s) in words
-        @return word_ids (list[int] or list[list[int]]): sentence(s) in indices
+        """ 把词序列，句子序列转成下标序列
+        @param sents (list[str] or list[list[str]]): 句子列表
+        @return word_ids (list[int] or list[list[int]]): 句子下标列表
         """
         if type(sents[0]) == list:
             return [[self[w] for w in s] for s in sents]
@@ -104,20 +101,18 @@ class VocabEntry(object):
             return [self[w] for w in sents]
 
     def indices2words(self, word_ids):
-        """ Convert list of indices into words.
-        @param word_ids (list[int]): list of word ids
-        @return sents (list[str]): list of words
+        """ 把下标序列转回文字序列
+        @param word_ids (list[int]): 词下标序列
+        @return sents (list[str]): 词序列
         """
         return [self.id2word[w_id] for w_id in word_ids]
 
     def to_input_tensor(self, sents: List[List[str]], device: torch.device) -> torch.Tensor:
-        """ Convert list of sentences (words) into tensor with necessary padding for
-        shorter sentences.
-
-        @param sents (List[List[str]]): list of sentences (words)
-        @param device: device on which to load the tesnor, i.e. CPU or GPU
-
-        @returns sents_var: tensor of (max_sentence_length, batch_size)
+        """
+        把句序列转换成张量，且对较短的句子进行填充
+        @param sents (List[List[str]]): 词序列或句序列
+        @param device: 用于加载张量的设备，CPU或GPU
+        @returns sents_var: 张量，形状(max_sentence_length, batch_size)
         """
         word_ids = self.words2indices(sents) # 获取这个句子对应的词的所有下标
         sents_t = pad_sents(word_ids, self['<pad>']) # 填充标记以对齐
@@ -126,11 +121,11 @@ class VocabEntry(object):
 
     @staticmethod
     def from_corpus(corpus, size, freq_cutoff=2):
-        """ Given a corpus construct a Vocab Entry.
-        @param corpus (list[str]): corpus of text produced by read_corpus function
-        @param size (int): # of words in vocabulary
-        @param freq_cutoff (int): if word occurs n < freq_cutoff times, drop the word
-        @returns vocab_entry (VocabEntry): VocabEntry instance produced from provided corpus
+        """ 给定语料库，创建词汇表
+        @param corpus (list[str]): 从 read_corpus 函数得到的语料库
+        @param size (int): 词汇表的词数
+        @param freq_cutoff (int): 丢弃的阈值
+        @returns vocab_entry (VocabEntry): 从语料库生成的词汇表
         """
         vocab_entry = VocabEntry()
         word_freq = Counter(chain(*corpus)) # 获得词频
@@ -144,23 +139,23 @@ class VocabEntry(object):
 
 
 class Vocab(object):
-    """ Vocab encapsulating src and target langauges.
+    """ 对src和tgt词的总述
     """
     def __init__(self, src_vocab: VocabEntry, tgt_vocab: VocabEntry):
-        """ Init Vocab.
-        @param src_vocab (VocabEntry): VocabEntry for source language
-        @param tgt_vocab (VocabEntry): VocabEntry for target language
+        """ 初始化Vocab
+        @param src_vocab (VocabEntry): 源词表
+        @param tgt_vocab (VocabEntry): 目标词表
         """
         self.src = src_vocab
         self.tgt = tgt_vocab
 
     @staticmethod
     def build(src_sents, tgt_sents, vocab_size, freq_cutoff) -> 'Vocab':
-        """ Build Vocabulary.
-        @param src_sents (list[str]): Source sentences provided by read_corpus() function
-        @param tgt_sents (list[str]): Target sentences provided by read_corpus() function
-        @param vocab_size (int): Size of vocabulary for both source and target languages
-        @param freq_cutoff (int): if word occurs n < freq_cutoff times, drop the word.
+        """ 建立词表
+        @param src_sents (list[str]): 从 read_corpus() 函数得到的源句子
+        @param tgt_sents (list[str]): 从 read_corpus() 函数得到的目标句子
+        @param vocab_size (int): 源或目标词表的大小
+        @param freq_cutoff (int): 丢弃词的阈值
         """
         assert len(src_sents) == len(tgt_sents)
 
@@ -173,16 +168,16 @@ class Vocab(object):
         return Vocab(src, tgt)
 
     def save(self, file_path):
-        """ Save Vocab to file as JSON dump.
-        @param file_path (str): file path to vocab file
+        """ 用JSON格式保存词总述
+        @param file_path (str): 词总述文件路径
         """
         json.dump(dict(src_word2id=self.src.word2id, tgt_word2id=self.tgt.word2id), open(file_path, 'w'), ensure_ascii=False,indent=2)
 
     @staticmethod
     def load(file_path):
-        """ Load vocabulary from JSON dump.
-        @param file_path (str): file path to vocab file
-        @returns Vocab object loaded from JSON dump
+        """ 从JSON格式加载词总述
+        @param file_path (str): 词总述文件路径
+        @returns 加载好的词总述
         """
         entry = json.load(open(file_path, 'r'))
         src_word2id = entry['src_word2id']
@@ -191,8 +186,7 @@ class Vocab(object):
         return Vocab(VocabEntry(src_word2id), VocabEntry(tgt_word2id))
 
     def __repr__(self):
-        """ Representation of Vocab to be used
-        when printing the object.
+        """ 词总述的描述
         """
         return 'Vocab(source %d words, target %d words)' % (len(self.src), len(self.tgt))
 

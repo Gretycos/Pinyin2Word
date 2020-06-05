@@ -31,7 +31,7 @@ class PinyinSplit:
             'o':['o', 'ou'],
             'p':['pa', 'pai', 'pan', 'pang', 'pao', 'pei', 'pen',
                 'peng', 'pi', 'pian', 'piao', 'pie', 'pin', 'ping', 'po', 'pou', 'pu'],
-            'q':['qi', 'qia', 'qian', 'qiang', 'qie', 'qin', 'qing', 'qiong', 'qiu', 'qu',
+            'q':['qi', 'qia', 'qian', 'qiang', 'qiao', 'qie', 'qin', 'qing', 'qiong', 'qiu', 'qu',
                 'quan', 'que', 'qun', 'qv'],
             'r':['ran', 'rang', 'rao', 're', 'ren', 'reng', 'ri',
                 'rong', 'rou', 'ru', 'ruan', 'rui', 'run', 'ruo'],
@@ -73,7 +73,7 @@ class PinyinSplit:
             '】': ['】'],
         }
 
-    def split(self,source):
+    def split(self,source): # 输入拼音 输出分离后的结果
         result = []
         start = 0
         length = len(source)
@@ -81,7 +81,7 @@ class PinyinSplit:
         count = 0
         while start < length:
             count += 1
-            if count == 1000:
+            if count == 2000:
                 print(source, result)
                 break
             lastWrong = False
@@ -92,7 +92,7 @@ class PinyinSplit:
                 if start+i+1 > length:
                     break
                 piece = source[start:start+i+1]
-                if i == 0 and len(self.pinyin[first])==0: # 非声母开头
+                if i == 0 and len(self.pinyin[first]) == 0:  # 非声母开头
                     lastWrong = True
                     # print(source,result,first)
                     result[-1] = result[-1][:-1]
@@ -104,7 +104,7 @@ class PinyinSplit:
                         step = i + 1
             if not lastWrong:
                 try:
-                    if (tmp == 'o' and piece[1] not in ['！','。','，','？','”','…','l']) or (len(tmp) == 1 and tmp not in self.pinyin[tmp]) or (tmp == 'en' and len(result)>0 and result[-1][-1] in ['r','n','g']): # 哦了，u开头，可能
+                    if (tmp == 'o' and len(piece) >1 and not self.hasComplete(piece[1:])) or (len(tmp) == 1 and tmp not in self.pinyin[tmp]) or (tmp == 'en' and len(result)>0 and result[-1][-1] in ['r','n','g']): # 哦了，u开头，可能
                         lastWrong = True
                         result[-1] = result[-1][:-1]
                         if len(result[-1]) == 0:
@@ -117,3 +117,17 @@ class PinyinSplit:
             result.append(tmp)
             start += step
         return result
+
+    def hasComplete(self,pinyin):
+        first = pinyin[0]
+        piece = first
+        if len(pinyin) == 1:
+            if first in self.pinyin:
+                return True
+        else:
+            for p in pinyin[1:]:
+                if first in self.pinyin:
+                    if piece in self.pinyin[first]:
+                        return True
+                piece = piece + p
+        return False

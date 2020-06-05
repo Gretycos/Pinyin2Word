@@ -13,19 +13,17 @@ from model_embeddings import ModelEmbeddings
 Hypothesis = namedtuple('Hypothesis', ['value', 'score'])
 
 class NMT(nn.Module):
-    """ Simple Neural Machine Transformation Model:
-        - Bidrectional LSTM Encoder
-        - Unidirection LSTM Decoder
-        - Global Attention Model (Luong, et al. 2015)
+    """ 简单的神经机器翻译模型:
+        - 双向 LSTM Encoder
+        - 单向 LSTM Decoder
+        - 全局注意力模型
     """
 
     def __init__(self, embed_size, hidden_size, vocab, dropout_rate=0.2):
-        """ Init NMT Model.
-
+        """ 初始化 NMT 模型.
         @param embed_size (int): Embedding size (dimensionality)
         @param hidden_size (int): Hidden Size (dimensionality)
-        @param vocab (Vocab): Vocabulary object containing src and tgt languages
-                              See vocab.py for documentation.
+        @param vocab (Vocab): 词总述，包括 src and tgt
         @param dropout_rate (float): Dropout probability, for attention
         """
         super(NMT, self).__init__()
@@ -55,15 +53,13 @@ class NMT(nn.Module):
         self.dropout = nn.Dropout(p=self.dropout_rate)
 
     def forward(self, source: List[List[str]], target: List[List[str]]) -> torch.Tensor:
-        """ Take a mini-batch of source and target sentences, compute the log-likelihood of
-        target sentences under the language models learned by the NMT system.
+        """ 取一个mini-batch的源句子和目标句子, 在NMT系统下学习的语言模型，计算目标句子的似然对数
 
-        @param source (List[List[str]]): list of source sentence tokens
-        @param target (List[List[str]]): list of target sentence tokens, wrapped by `<s>` and `</s>`
+        @param source (List[List[str]]): 源句子列表
+        @param target (List[List[str]]): 目标句子列表, 被 `<s>` 和 `</s>` 包裹
 
-        @returns scores (Tensor): a variable/tensor of shape (b, ) representing the
-                                    log-likelihood of generating the gold-standard target sentence for
-                                    each example in the input batch. Here b = batch size.
+        @returns scores (Tensor): 形状 (b, ) 的变量或张量，表示对输入的batch的每个例子，标准目标句子的似然对数
+                                  这里 b = batch size.
         """
 
         # 计算每个源句子的长度
@@ -89,17 +85,16 @@ class NMT(nn.Module):
 
 
     def encode(self, source_padded: torch.Tensor, source_lengths: List[int]) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
-        """ Apply the encoder to source sentences to obtain encoder hidden states.
-            Additionally, take the final states of the encoder and project them to obtain initial states for decoder.
+        """ 在源句子上应用encoder来得到encoder隐藏状态
+            然后，取出encoder最后的状态，把他们投影成decoder初始状态
+        @param source_padded (Tensor): 形状 (src_len, b) 的填充好的源句子的张量,
+                                        b = batch_size, src_len = 源句子的最大长度.
+                                        已按照最长到最短长度排序
+        @param source_lengths (List[int]): batch 中每个源句子的实际长度列表
 
-        @param source_padded (Tensor): Tensor of padded source sentences with shape (src_len, b), where
-                                        b = batch_size, src_len = maximum source sentence length. Note that
-                                       these have already been sorted in order of longest to shortest sentence.
-        @param source_lengths (List[int]): List of actual lengths for each of the source sentences in the batch
-        @returns enc_hiddens (Tensor): Tensor of hidden units with shape (b, src_len, h*2), where
-                                        b = batch size, src_len = maximum source sentence length, h = hidden size.
-        @returns dec_init_state (tuple(Tensor, Tensor)): Tuple of tensors representing the decoder's initial
-                                                hidden state and cell.
+        @returns enc_hiddens (Tensor): 形状 (b, src_len, h*2) 的隐藏单元张量,
+                                        b = batch size, src_len = 源句子的最大长度, h = hidden size.
+        @returns dec_init_state (tuple(Tensor, Tensor)): 表示 decoder 的初始隐藏状态和细胞状态的张量元组
         """
         enc_hiddens, dec_init_state = None, None
 
@@ -117,18 +112,17 @@ class NMT(nn.Module):
 
     def decode(self, enc_hiddens: torch.Tensor, enc_masks: torch.Tensor,
                 dec_init_state: Tuple[torch.Tensor, torch.Tensor], target_padded: torch.Tensor) -> torch.Tensor:
-        """Compute combined output vectors for a batch.
+        """对每个 batch 计算连接的输出向量
+        @param enc_hiddens (Tensor): 隐藏状态 (b, src_len, h*2),
+                                     b = batch size, src_len = 源句子的最大长度, h = hidden size.
+        @param enc_masks (Tensor): 句子掩码张量 (b, src_len),
+                                     b = batch size, src_len = 源句子的最大长度.
+        @param dec_init_state (tuple(Tensor, Tensor)): deocder 初始的隐藏状态和细胞状态
+        @param target_padded (Tensor): 标准填充好的目标句子 (tgt_len, b),
+                                       tgt_len = 目标句子的最大长度, b = batch size.
 
-        @param enc_hiddens (Tensor): Hidden states (b, src_len, h*2), where
-                                     b = batch size, src_len = maximum source sentence length, h = hidden size.
-        @param enc_masks (Tensor): Tensor of sentence masks (b, src_len), where
-                                     b = batch size, src_len = maximum source sentence length.
-        @param dec_init_state (tuple(Tensor, Tensor)): Initial state and cell for decoder
-        @param target_padded (Tensor): Gold-standard padded target sentences (tgt_len, b), where
-                                       tgt_len = maximum target sentence length, b = batch size.
-
-        @returns combined_outputs (Tensor): combined output tensor  (tgt_len, b,  h), where
-                                        tgt_len = maximum target sentence length, b = batch_size,  h = hidden size
+        @returns combined_outputs (Tensor): 连接输出的张量  (tgt_len, b,  h),
+                                        tgt_len = 目标句子的最大长度, b = batch_size,  h = hidden size
         """
         # 在最大长度的句子中去掉<END>标识
         target_padded = target_padded[:-1]
@@ -160,26 +154,24 @@ class NMT(nn.Module):
             enc_hiddens: torch.Tensor,
             enc_hiddens_proj: torch.Tensor,
             enc_masks: torch.Tensor) -> Tuple[Tuple, torch.Tensor, torch.Tensor]:
-        """ Compute one forward step of the LSTM decoder, including the attention computation.
+        """ 计算 LSTM decoder 的每个前向步, 包括注意力计算.
 
-        @param Ybar_t (Tensor): Concatenated Tensor of [Y_t o_prev], with shape (b, e + h). The input for the decoder,
-                                where b = batch size, e = embedding size, h = hidden size.
-        @param dec_state (tuple(Tensor, Tensor)): Tuple of tensors both with shape (b, h), where b = batch size, h = hidden size.
-                First tensor is decoder's prev hidden state, second tensor is decoder's prev cell.
-        @param enc_hiddens (Tensor): Encoder hidden states Tensor, with shape (b, src_len, h * 2), where b = batch size,
-                                    src_len = maximum source length, h = hidden size.
-        @param enc_hiddens_proj (Tensor): Encoder hidden states Tensor, projected from (h * 2) to h. Tensor is with shape (b, src_len, h),
-                                    where b = batch size, src_len = maximum source length, h = hidden size.
-        @param enc_masks (Tensor): Tensor of sentence masks shape (b, src_len),
-                                    where b = batch size, src_len is maximum source length.
+        @param Ybar_t (Tensor): 连接好的张量  [Y_t o_prev], 形状 (b, e + h). decoder 的输入
+                                b = batch size, e = embedding size, h = hidden size.
+        @param dec_state (tuple(Tensor, Tensor)): 张量元组 形状都为 (b, h), b = batch size, h = hidden size.
+                第一个张量是 decoder 的先前的隐藏状态, 第二个张量是 decoder 的先前的细胞状态.
+        @param enc_hiddens (Tensor): Encoder 隐藏状态张量, 形状 (b, src_len, h * 2),
+                                    b = batch size, src_len = 源的最大长度, h = hidden size.
+        @param enc_hiddens_proj (Tensor): Encoder 隐藏状态张量, 从 (h * 2) 投影成 h. 张量形状 (b, src_len, h),
+                                        b = batch size, src_len = 源的最大长度, h = hidden size.
+        @param enc_masks (Tensor): 句子掩码张量，形状 (b, src_len),
+                                    b = batch size, src_len = 源的最大长度.
 
-        @returns dec_state (tuple (Tensor, Tensor)): Tuple of tensors both shape (b, h), where b = batch size, h = hidden size.
-                First tensor is decoder's new hidden state, second tensor is decoder's new cell.
-        @returns combined_output (Tensor): Combined output Tensor at timestep t, shape (b, h), where b = batch size, h = hidden size.
-        @returns e_t (Tensor): Tensor of shape (b, src_len). It is attention scores distribution.
-                                Note: You will not use this outside of this function.
-                                      We are simply returning this value so that we can sanity check
-                                      your implementation.
+        @returns dec_state (tuple (Tensor, Tensor)): 张量元组 两个张量形状都为 (b, h), b = batch size, h = hidden size.
+                第一个张量是 decoder 的新隐藏状态, 第二个张量是 decoder 的新细胞状态.
+        @returns combined_output (Tensor): 第t步连接的输出张量, 形状 (b, h), b = batch size, h = hidden size.
+        @returns e_t (Tensor): 张量，形状 (b, src_len). 注意力分数分布.
+                                这个函数之外不会使用到。
         """
 
         combined_output = None
@@ -208,14 +200,14 @@ class NMT(nn.Module):
 
 
     def generate_sent_masks(self, enc_hiddens: torch.Tensor, source_lengths: List[int]) -> torch.Tensor:
-        """ Generate sentence masks for encoder hidden states.
+        """ 对 encoder 隐藏状态生成句子掩码
 
-        @param enc_hiddens (Tensor): encodings of shape (b, src_len, 2*h), where b = batch size,
-                                     src_len = max source length, h = hidden size.
-        @param source_lengths (List[int]): List of actual lengths for each of the sentences in the batch.
+        @param enc_hiddens (Tensor): 需要编码的张量，形状 (b, src_len, 2*h), b = batch size,
+                                     src_len = 源的最大长度, h = hidden size.
+        @param source_lengths (List[int]): batch 中每个句子的实际长度.
 
-        @returns enc_masks (Tensor): Tensor of sentence masks of shape (b, src_len),
-                                    where src_len = max source length, h = hidden size.
+        @returns enc_masks (Tensor): 句子掩码的张量，形状 (b, src_len),
+                                    src_len = 源的最大长度, h = hidden size.
         """
         enc_masks = torch.zeros(enc_hiddens.size(0), enc_hiddens.size(1), dtype=torch.float)  # 掩码矩阵
         for e_id, src_len in enumerate(source_lengths):
@@ -224,13 +216,13 @@ class NMT(nn.Module):
 
 
     def beam_search(self, src_sent: List[str], beam_size: int=5, max_decoding_time_step: int=70) -> List[Hypothesis]:
-        """ Given a single source sentence, perform beam search, yielding translations in the target language.
-        @param src_sent (List[str]): a single source sentence (words)
-        @param beam_size (int): beam size
-        @param max_decoding_time_step (int): maximum number of time steps to unroll the decoding RNN
-        @returns hypotheses (List[Hypothesis]): a list of hypothesis, each hypothesis has two fields:
-                value: List[str]: the decoded target sentence, represented as a list of words
-                score: float: the log-likelihood of the target sentence
+        """ 给定单个源句子, 运行 beam search, 生成目标形式的结果.
+        @param src_sent (List[str]): 一个源句子（词）
+        @param beam_size (int): beam size，候选数
+        @param max_decoding_time_step (int): 展开解码 RNN 的最大时间步
+        @returns hypotheses (List[Hypothesis]): 假设列表, 每个假设有两个域:
+                value: List[str]: 解码的目标句子, 用词序列表示
+                score: float: 目标句子的对数似然
         """
         src_sents_var = self.vocab.src.to_input_tensor([src_sent], self.device)
 
@@ -243,13 +235,13 @@ class NMT(nn.Module):
         eos_id = self.vocab.tgt['</s>']
 
         hypotheses = [['<s>']]
-        hyp_scores = torch.zeros(len(hypotheses), dtype=torch.float, device=self.device)
+        hyp_scores = torch.zeros(len(hypotheses), dtype=torch.float, device=self.device) # (1,)
         completed_hypotheses = []
 
         t = 0
         while len(completed_hypotheses) < beam_size and t < max_decoding_time_step:
             t += 1
-            hyp_num = len(hypotheses)
+            hyp_num = len(hypotheses) # 候选句数量
 
             exp_src_encodings = src_encodings.expand(hyp_num,
                                                      src_encodings.size(1),
@@ -263,24 +255,24 @@ class NMT(nn.Module):
             y_t_embed = self.model_embeddings.target(y_tm1)
 
             x = torch.cat([y_t_embed, att_tm1], dim=-1)
-
+            # att_t形状(b, h)
             (h_t, cell_t), att_t, _  = self.step(x, h_tm1,
                                                       exp_src_encodings, exp_src_encodings_att_linear, enc_masks=None)
 
             # 目标文字的概率对数
-            log_p_t = F.log_softmax(self.target_vocab_projection(att_t), dim=-1)
+            log_p_t = F.log_softmax(self.target_vocab_projection(att_t), dim=-1) # (词表长,)
 
-            live_hyp_num = beam_size - len(completed_hypotheses)
-            contiuating_hyp_scores = (hyp_scores.unsqueeze(1).expand_as(log_p_t) + log_p_t).view(-1)
-            top_cand_hyp_scores, top_cand_hyp_pos = torch.topk(contiuating_hyp_scores, k=live_hyp_num)
+            live_hyp_num = beam_size - len(completed_hypotheses) # beam_size - 完成的句子数
+            contiuating_hyp_scores = (hyp_scores.unsqueeze(1).expand_as(log_p_t) + log_p_t).view(-1) # (候选句数,词表长)
+            top_cand_hyp_scores, top_cand_hyp_pos = torch.topk(contiuating_hyp_scores, k=live_hyp_num) # (候选句数,k)
 
-            prev_hyp_ids = top_cand_hyp_pos / len(self.vocab.tgt)
-            hyp_word_ids = top_cand_hyp_pos % len(self.vocab.tgt)
+            prev_hyp_ids = top_cand_hyp_pos / len(self.vocab.tgt) # 前序候选词id矩阵(候选句数,k)
+            hyp_word_ids = top_cand_hyp_pos % len(self.vocab.tgt) # 候选词id矩阵(候选句数,k)
 
-            new_hypotheses = []
-            live_hyp_ids = []
-            new_hyp_scores = []
-
+            new_hypotheses = [] # 新候选句子
+            live_hyp_ids = [] # 剩余候选id
+            new_hyp_scores = [] # 新候选句分数
+            # 按照k的数量迭代更新候选句
             for prev_hyp_id, hyp_word_id, cand_new_hyp_score in zip(prev_hyp_ids, hyp_word_ids, top_cand_hyp_scores):
                 prev_hyp_id = prev_hyp_id.item()
                 hyp_word_id = hyp_word_id.item()
@@ -288,7 +280,7 @@ class NMT(nn.Module):
 
                 hyp_word = self.vocab.tgt.id2word[hyp_word_id]
                 new_hyp_sent = hypotheses[prev_hyp_id] + [hyp_word]
-                if hyp_word == '</s>':
+                if hyp_word == '</s>': # 完成
                     completed_hypotheses.append(Hypothesis(value=new_hyp_sent[1:-1],
                                                            score=cand_new_hyp_score))
                 else:
@@ -299,6 +291,7 @@ class NMT(nn.Module):
             if len(completed_hypotheses) == beam_size: # 候选项达最大值
                 break
 
+            # 更新下一个状态
             live_hyp_ids = torch.tensor(live_hyp_ids, dtype=torch.long, device=self.device)
             h_tm1 = (h_t[live_hyp_ids], cell_t[live_hyp_ids])
             att_tm1 = att_t[live_hyp_ids]
@@ -310,22 +303,22 @@ class NMT(nn.Module):
             completed_hypotheses.append(Hypothesis(value=hypotheses[0][1:],
                                                    score=hyp_scores[0].item()))
 
-        completed_hypotheses.sort(key=lambda hyp: hyp.score, reverse=True)
+        completed_hypotheses.sort(key=lambda hyp: hyp.score, reverse=True) # 得分降序
 
         return completed_hypotheses
 
 
     @property
     def device(self) -> torch.device:
-        """ Determine which device to place the Tensors upon, CPU or GPU.
+        """ 决定使用CPU或GPU去放置张量.
         """
         return self.model_embeddings.source.weight.device
 
 
     @staticmethod
     def load(model_path: str):
-        """ Load the model from a file.
-        @param model_path (str): path to model
+        """ 从文件中加载模型.
+        @param model_path (str): 模型路径
         """
         params = torch.load(model_path, map_location=lambda storage, loc: storage)
         args = params['args']
@@ -336,15 +329,15 @@ class NMT(nn.Module):
 
 
     def save(self, path: str):
-        """ Save the odel to a file.
-        @param path (str): path to the model
+        """ 保存模型到文件.
+        @param path (str): 模型路径
         """
         print('save model parameters to [%s]' % path, file=sys.stderr)
 
         params = {
             'args': dict(embed_size=self.model_embeddings.embed_size, hidden_size=self.hidden_size, dropout_rate=self.dropout_rate),
             'vocab': self.vocab,
-            'state_dict': self.state_dict()
+            'state_dict': self.state_dict() # 包含lr学习率
         }
 
         torch.save(params, path)

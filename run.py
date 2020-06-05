@@ -15,15 +15,15 @@ Options:
     --dev-tgt=<file>                        dev target file
     --vocab=<file>                          vocab file
     --seed=<int>                            seed [default: 0]
-    --batch-size=<int>                      batch size [default: 32]
+    --batch-size=<int>                      batch size [default: 64]
     --embed-size=<int>                      embedding size [default: 256]
     --hidden-size=<int>                     hidden size [default: 256]
     --clip-grad=<float>                     gradient clipping [default: 5.0]
     --log-every=<int>                       log every [default: 10]
     --max-epoch=<int>                       max epoch [default: 30]
     --input-feed                            use input feeding
-    --patience=<int>                        wait for how many iterations to decay learning rate [default: 5]
-    --max-num-trial=<int>                   terminate training after how many trials [default: 5]
+    --patience=<int>                        wait for how many iterations to decay learning rate [default: 3]
+    --max-num-trial=<int>                   terminate training after how many trials [default: 3]
     --lr-decay=<float>                      learning rate decay [default: 0.5]
     --beam-size=<int>                       beam size [default: 5]
     --sample-size=<int>                     sample size [default: 5]
@@ -38,6 +38,7 @@ import math
 import sys
 import pickle
 import time
+import os
 
 
 from docopt import docopt
@@ -53,11 +54,11 @@ import torch
 import torch.nn.utils
 
 def evaluate_ppl(model, dev_data, batch_size=32):
-    """ Evaluate perplexity on dev sentences
-    @param model (NMT): NMT Model
-    @param dev_data (list of (src_sent, tgt_sent)): list of tuples containing source and target sentence
+    """ 在验证集上评估困惑度
+    @param model (NMT): NMT 模型
+    @param dev_data (list of (src_sent, tgt_sent)): 元组列表，包含源句子和目标句子
     @param batch_size (batch size)
-    @returns ppl (perplixty on dev sentences)
+    @returns ppl (验证集上的困惑度)
     """
     was_training = model.training
     model.eval()
@@ -74,7 +75,7 @@ def evaluate_ppl(model, dev_data, batch_size=32):
             tgt_word_num_to_predict = sum(len(s[1:]) for s in tgt_sents)  # omitting leading `<s>`
             cum_tgt_words += tgt_word_num_to_predict
 
-        ppl = np.exp(cum_loss / cum_tgt_words)
+        ppl = np.exp(cum_loss / cum_tgt_words) # 困惑度=exp(累积损失/累积词数)
 
     if was_training:
         model.train()
@@ -96,8 +97,8 @@ def compute_corpus_level_bleu_score(references: List[List[str]], hypotheses: Lis
 
 
 def train(args: Dict):
-    """ Train the NMT Model.
-    @param args (Dict): args from cmd line
+    """ 训练 NMT 模型.
+    @param args (Dict): 命令行参数
     """
     train_data_src = read_corpus(args['--train-src'], source='src')
     train_data_tgt = read_corpus(args['--train-tgt'], source='tgt')
@@ -133,6 +134,7 @@ def train(args: Dict):
 
     device = torch.device("cuda:0" if args['--cuda'] else "cpu")
     print('use device: %s' % device, file=sys.stderr)
+    print(torch.cuda.get_device_name(0))
 
     model = model.to(device)
 
@@ -142,6 +144,21 @@ def train(args: Dict):
     train_iter = patience = cum_loss = report_loss = cum_tgt_words = report_tgt_words = 0
     cum_examples = report_examples = epoch = valid_num = 0
     hist_valid_scores = []
+
+    if os.path.exists(model_save_path):
+        # 加载模型
+        print('load previously best model')
+        params = torch.load(model_save_path, map_location=lambda storage, loc: storage)
+        model.load_state_dict(params['state_dict'])
+        model = model.to(device)
+
+        if os.path.exists(model_save_path+'.optim'):
+            print('restore parameters of the optimizers', file=sys.stderr)
+            optimizer.load_state_dict(torch.load(model_save_path + '.optim'))
+            lr = optimizer.param_groups[0]['lr']
+            print('current learning rate is {}'.format(lr))
+
+
     train_time = begin_time = time.time()
     print('begin Maximum Likelihood training')
 
@@ -227,11 +244,11 @@ def train(args: Dict):
                             print('early stop!', file=sys.stderr)
                             exit(0)
 
-                        # decay lr, and restore from previously best checkpoint
+                        # 降低学习率, 从之前最好的点恢复参数
                         lr = optimizer.param_groups[0]['lr'] * float(args['--lr-decay'])
                         print('load previously best model and decay learning rate to %f' % lr, file=sys.stderr)
 
-                        # load model
+                        # 加载模型
                         params = torch.load(model_save_path, map_location=lambda storage, loc: storage)
                         model.load_state_dict(params['state_dict'])
                         model = model.to(device)
@@ -251,10 +268,9 @@ def train(args: Dict):
                     exit(0)
 
 def decode(args: Dict[str, str]):
-    """ Performs decoding on a test set, and save the best-scoring decoding results.
-    If the target gold-standard sentences are given, the function also computes
-    corpus-level BLEU score.
-    @param args (Dict): args from cmd line
+    """ 在测试集上执行解码操作, 保存最高得分的解码结果.
+        如果给定标准句子，函数海湖计算BLEU得分.
+    @param args (Dict): 命令行参数
     """
 
     print("load test source sentences from [{}]".format(args['TEST_SOURCE_FILE']), file=sys.stderr)
@@ -274,34 +290,34 @@ def decode(args: Dict[str, str]):
                              max_decoding_time_step=int(args['--max-decoding-time-step']))
 
     if args['TEST_TARGET_FILE']:
-        top_hypotheses = [hyps[0] for hyps in hypotheses] # 每句话翻译的首选项
-        bleu_score = compute_corpus_level_bleu_score(test_data_tgt, top_hypotheses)
+        top_hypotheses = [hyps[0] for hyps in hypotheses] # 每句话转汉字的首选项形成的列表
+        bleu_score = compute_corpus_level_bleu_score(test_data_tgt, top_hypotheses) # 打分
         print('Corpus BLEU: {}'.format(bleu_score * 100), file=sys.stderr)
 
     with open(args['OUTPUT_FILE'], 'w') as f:
         for src_sent, hyps in zip(test_data_src, hypotheses):
             top_hyp = hyps[0]
-            hyp_sent = ' '.join(top_hyp.value)
+            hyp_sent = ''.join(top_hyp.value)
             f.write(hyp_sent + '\n')
 
 
 def beam_search(model: NMT, test_data_src: List[List[str]], beam_size: int, max_decoding_time_step: int) -> List[List[Hypothesis]]:
-    """ Run beam search to construct hypotheses for a list of src-language sentences.
-    @param model (NMT): NMT Model
-    @param test_data_src (List[List[str]]): List of sentences (words) in source language, from test set.
-    @param beam_size (int): beam_size (# of hypotheses to hold for a translation at every step)
-    @param max_decoding_time_step (int): maximum sentence length that Beam search can produce
-    @returns hypotheses (List[List[Hypothesis]]): List of Hypothesis translations for every source sentence.
+    """ 对源句子列表使用beam search去构建假设.
+    @param model (NMT): NMT 模型
+    @param test_data_src (List[List[str]]): 源句子列表, 测试集中的.
+    @param beam_size (int): beam_size (每一步的候选数)
+    @param max_decoding_time_step (int): Beam search 能产生的最大句子长度
+    @returns hypotheses (List[List[Hypothesis]]): 每个源句子的beam_size个假设.
     """
     was_training = model.training
     model.eval()
 
-    hypotheses = []
+    hypotheses = [] # 所有句子的候选句列表
     with torch.no_grad():
         for src_sent in tqdm(test_data_src, desc='Decoding', file=sys.stdout):
             example_hyps = model.beam_search(src_sent, beam_size=beam_size, max_decoding_time_step=max_decoding_time_step)
 
-            hypotheses.append(example_hyps)
+            hypotheses.append(example_hyps) # 把这句话的所有候选句加入列表
 
     if was_training: model.train(was_training)
 
