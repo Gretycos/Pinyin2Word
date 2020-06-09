@@ -73,64 +73,57 @@ def batch_iter(data, batch_size, shuffle=False):
 
         yield src_sents, tgt_sents
 
-# def hz2pinyin():
-#     load_single_dict({ord('嗯'):'en'})
-#     with open('./pyin_hz_data/dev.pyin','w') as f:
-#         for line in open('./pyin_hz_data/dev.hz'):
-#             pinyinList = S('{}'.format(line.strip()),separator='',strict=False)
-#             f.write('{}\n'.format(pinyinList))
-#     with open('./pyin_hz_data/test.pyin','w') as f:
-#         for line in open('./pyin_hz_data/test.hz'):
-#             pinyinList = S('{}'.format(line.strip()),separator='',strict=False)
-#             f.write('{}\n'.format(pinyinList))
-#     with open('./pyin_hz_data/train.pyin','w') as f:
-#         for line in open('./pyin_hz_data/train.hz'):
-#             pinyinList = S('{}'.format(line.strip()),separator='',strict=False)
-#             f.write('{}\n'.format(pinyinList))
-#
-# def transformData(): # 生语料库转数据集
-#     with open('dataset.txt','w') as f:
-#         for line in open('people2014.txt'):
-#             # sent = line.strip().split('\t')[1].replace(' ','')
-#             sent = line.strip().replace(' ', '')
-#             if re.search(r'[^\u4e00-\u9fa5\。\；\，\：\“\”\（\）\、\？\《\》\！\…\「\」\【\】]',sent) is not None:
-#                 continue
-#             f.write('{}\n'.format(sent))
-#
-# def genDev():
-#     with open('pyin_hz_data/dev.hz', 'w') as f:
-#         count = 0
-#         for line in open('dataset.txt'):
-#             count += 1
-#             if count % 50 == 36:
-#                 f.write('{}'.format(line))
-#
-# def genTest():
-#     with open('pyin_hz_data/test.hz', 'w') as f:
-#         count = 0
-#         for line in open('dataset.txt'):
-#             count += 1
-#             if count % 50 == 16:
-#                 f.write('{}'.format(line))
-#
-# def genTrain():
-#     with open('pyin_hz_data/train.hz', 'w') as f:
-#         count = 0
-#         for line in open('dataset.txt'):
-#             count += 1
-#             if count % 50 != 16 and count % 50!= 36:
-#                 f.write('{}'.format(line))
 
-# if __name__ == '__main__':
-    # transformData()
-    # genDev()
-    # genTest()
-    # genTrain()
-    # hz2pinyin()
-    # ps = PinyinSplit()
-    # res = ps.split('xiaopuoxiaopu')
-    # print(res)
-    # print(S('榊何竟呣',separator=''))
+def transformData(): # 生语料库转数据集
+    with open('dataset.txt','w') as f:
+        for line in open('people2014.txt'):
+            sent = line.strip().replace(' ', '')
+            if re.search(r'[^\u4e00-\u9fa5\。\；\，\：\“\”\（\）\、\？\《\》\！\…\「\」\【\】]', sent) is not None:
+                continue
+            f.write('{}\n'.format(sent))
+
+
+def genData(): # 数据集生成汉字验证集、测试集、训练集
+    with open('pyin_hz_data/dev.hz', 'w') as f:
+        count = 0
+        for line in open('dataset.txt'):
+            count += 1
+            if count % 50 == 36:
+                f.write('{}'.format(line))
+    with open('pyin_hz_data/test.hz', 'w') as f:
+        count = 0
+        for line in open('dataset.txt'):
+            count += 1
+            if count % 50 == 16:
+                f.write('{}'.format(line))
+    with open('pyin_hz_data/train.hz', 'w') as f:
+        count = 0
+        for line in open('dataset.txt'):
+            count += 1
+            if count % 50 != 16 and count % 50!= 36:
+                f.write('{}'.format(line))
+
+def hz2pinyin(): # 生成拼音验证集、测试集、训练集
+    load_single_dict({ord('嗯'):'en'})
+    with open('pyin_hz_data/dev.pyin', 'w') as f:
+        for line in open('pyin_hz_data/dev.hz'):
+            pinyinList = S('{}'.format(line.strip()),separator='',strict=False)
+            f.write('{}\n'.format(pinyinList))
+    with open('pyin_hz_data/test.pyin', 'w') as f:
+        for line in open('pyin_hz_data/test.hz'):
+            pinyinList = S('{}'.format(line.strip()),separator='',strict=False)
+            f.write('{}\n'.format(pinyinList))
+    with open('pyin_hz_data/train.pyin', 'w') as f:
+        for line in open('pyin_hz_data/train.hz'):
+            pinyinList = S('{}'.format(line.strip()),separator='',strict=False)
+            f.write('{}\n'.format(pinyinList))
+
+
+if __name__ == '__main__':
+    transformData()
+    genData()
+    hz2pinyin()
+
 
 
 

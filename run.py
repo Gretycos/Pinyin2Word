@@ -21,14 +21,14 @@ Options:
     --hidden-size=<int>                     hidden size [default: 256]
     --clip-grad=<float>                     gradient clipping [default: 5.0]
     --log-every=<int>                       log every [default: 10]
-    --max-epoch=<int>                       max epoch [default: 30]
+    --max-epoch=<int>                       max epoch [default: 50]
     --input-feed                            use input feeding
     --patience=<int>                        wait for how many iterations to decay learning rate [default: 3]
     --max-num-trial=<int>                   terminate training after how many trials [default: 3]
     --lr-decay=<float>                      learning rate decay [default: 0.5]
     --beam-size=<int>                       beam size [default: 5]
     --sample-size=<int>                     sample size [default: 5]
-    --lr=<float>                            learning rate [default: 0.002]
+    --lr=<float>                            learning rate [default: 0.0005]
     --uniform-init=<float>                  uniformly initialize all parameters [default: 0.1]
     --save-to=<file>                        model save path [default: model.bin]
     --valid-niter=<int>                     perform validation after how many iterations [default: 2000]
@@ -87,17 +87,17 @@ def evaluate_ppl(model, dev_data, batch_size=32):
     return ppl
 
 
-def compute_corpus_level_bleu_score(references: List[List[str]], hypotheses: List[Hypothesis]) -> float:
-    """ Given decoding results and reference sentences, compute corpus-level BLEU score.
-    @param references (List[List[str]]): a list of gold-standard reference target sentences
-    @param hypotheses (List[Hypothesis]): a list of hypotheses, one for each reference
-    @returns bleu_score: corpus-level BLEU score
-    """
-    if references[0][0] == '<s>':
-        references = [ref[1:-1] for ref in references]
-    bleu_score = corpus_bleu([[ref] for ref in references],
-                             [hyp.value for hyp in hypotheses])
-    return bleu_score
+# def compute_corpus_level_bleu_score(references: List[List[str]], hypotheses: List[Hypothesis]) -> float:
+#     """ Given decoding results and reference sentences, compute corpus-level BLEU score.
+#     @param references (List[List[str]]): a list of gold-standard reference target sentences
+#     @param hypotheses (List[Hypothesis]): a list of hypotheses, one for each reference
+#     @returns bleu_score: corpus-level BLEU score
+#     """
+#     if references[0][0] == '<s>':
+#         references = [ref[1:-1] for ref in references]
+#     bleu_score = corpus_bleu([[ref] for ref in references],
+#                              [hyp.value for hyp in hypotheses])
+#     return bleu_score
 
 def evaluate_ca_hrf(references: List[List[str]], hypotheses: List[Hypothesis]):
     if references[0][0] == '<s>':
@@ -197,7 +197,7 @@ def train(args: Dict):
 
     model = model.to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=float(args['--lr']))
+    optimizer = torch.optim.Adam(model.parameters(), lr=float(args['--lr'])) # 优化器
 
     num_trial = 0
     train_iter = patience = cum_loss = report_loss = cum_tgt_words = report_tgt_words = 0
@@ -205,7 +205,7 @@ def train(args: Dict):
     hist_valid_scores = []
 
     if os.path.exists(model_save_path):
-        # 加载模型
+        # 如果一开始就有模型文件，加载模型（相当于继续未完成的训练）
         print('load previously best model')
         params = torch.load(model_save_path, map_location=lambda storage, loc: storage)
         model.load_state_dict(params['state_dict'])
@@ -237,7 +237,7 @@ def train(args: Dict):
 
             loss.backward()
 
-            # clip gradient
+            # 梯度爆炸
             grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), clip_grad)
 
             optimizer.step()
@@ -276,7 +276,7 @@ def train(args: Dict):
 
                 print('begin validation ...', file=sys.stderr)
 
-                # compute dev. ppl and bleu
+                # compute dev. ppl
                 dev_ppl = evaluate_ppl(model, dev_data, batch_size=128)   # dev batch size can be a bit larger
                 valid_metric = -dev_ppl
 
@@ -328,7 +328,7 @@ def train(args: Dict):
 
 def decode(args: Dict[str, str]):
     """ 在测试集上执行解码操作, 保存最高得分的解码结果.
-        如果给定标准句子，函数海湖计算BLEU得分.
+        如果给定标准句子，函数还会计算平均字符准确率CA，第一个候选句子命中率HRF，前k个候选句子命中率kHRF
     @param args (Dict): 命令行参数
     """
     if args['SENTENCE']:

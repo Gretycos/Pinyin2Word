@@ -13,7 +13,7 @@ from model_embeddings import ModelEmbeddings
 Hypothesis = namedtuple('Hypothesis', ['value', 'score'])
 
 class NMT(nn.Module):
-    """ 简单的神经机器翻译模型:
+    """ 基于注意力机制的seq2seq神经机器转换模型:
         - 双向 LSTM Encoder
         - 单向 LSTM Decoder
         - 全局注意力模型
@@ -21,10 +21,11 @@ class NMT(nn.Module):
 
     def __init__(self, embed_size, hidden_size, vocab, dropout_rate=0.2):
         """ 初始化 NMT 模型.
+
         @param embed_size (int): Embedding size (dimensionality)
         @param hidden_size (int): Hidden Size (dimensionality)
-        @param vocab (Vocab): 词总述，包括 src and tgt
-        @param dropout_rate (float): Dropout probability, for attention
+        @param vocab (Vocab): 词总述，包括 src 和 tgt
+        @param dropout_rate (float): 对注意力的dropout概率
         """
         super(NMT, self).__init__()
         self.model_embeddings = ModelEmbeddings(embed_size, vocab)
@@ -32,19 +33,11 @@ class NMT(nn.Module):
         self.dropout_rate = dropout_rate
         self.vocab = vocab
 
-        # 默认值
-        self.encoder = None
-        self.decoder = None
-        self.h_projection = None
-        self.c_projection = None
-        self.att_projection = None
-        self.combined_output_projection = None
-        self.target_vocab_projection = None
-        self.dropout = None
-
         # 初始化各层次
-        self.encoder = nn.LSTM(embed_size,self.hidden_size,dropout=self.dropout_rate,bidirectional=True) # LSTM层 输入词嵌入，输出隐藏状态
-        self.decoder = nn.LSTMCell(embed_size + self.hidden_size,self.hidden_size) # LSTMCell 输入词嵌入与隐藏状态连接，输出隐藏状态
+        # LSTM层 输入词嵌入，输出隐藏状态
+        self.encoder = nn.LSTM(embed_size,self.hidden_size,dropout=self.dropout_rate,bidirectional=True) # 可以选择双向
+        # LSTMCell 输入词嵌入与隐藏状态连接，输出隐藏状态
+        self.decoder = nn.LSTMCell(embed_size + self.hidden_size,self.hidden_size) # 可以控制每个时间步
         self.h_projection = nn.Linear(self.hidden_size * 2,self.hidden_size,bias=False) # 降维2h->h
         self.c_projection = nn.Linear(self.hidden_size * 2,self.hidden_size,bias=False) # 降维2h->h
         self.att_projection = nn.Linear(self.hidden_size * 2,self.hidden_size,bias=False) # 降维2h->h
@@ -75,12 +68,12 @@ class NMT(nn.Module):
         combined_outputs = self.decode(enc_hiddens, enc_masks, dec_init_state, target_padded)
         P = F.log_softmax(self.target_vocab_projection(combined_outputs), dim=-1)
 
-        # 目标文本概率归零化
+        # 生成掩码，让目标文本中生成标记<pad>的概率归零化
         target_masks = (target_padded != self.vocab.tgt['<pad>']).float()
 
         # 计算生成真实的目标文本的概率对数
         target_gold_words_log_prob = torch.gather(P, index=target_padded[1:].unsqueeze(-1), dim=-1).squeeze(-1) * target_masks[1:]
-        scores = target_gold_words_log_prob.sum(dim=0)
+        scores = target_gold_words_log_prob.sum(dim=0) # 求和
         return scores
 
 
@@ -100,7 +93,7 @@ class NMT(nn.Module):
 
         X = self.model_embeddings.source(source_padded) # 输入经过embedding层
         X = pack_padded_sequence(X,source_lengths) # 应用pack_padded_sequence
-        enc_hiddens,(last_hidden,last_cell) = self.encoder(X) # encoder
+        enc_hiddens,(last_hidden,last_cell) = self.encoder(X) # 经过encoder层，得到每个时间步的隐藏状态和最后时间步的隐藏状态和细胞状态
         enc_hiddens = pad_packed_sequence(enc_hiddens,batch_first=True)[0] # (b, src_len, h*2)
         # 连接Encoder得到的前向和反向的隐藏状态or细胞状态,然后用线性层初始化Decoder隐藏状态or细胞状态
         init_decoder_hidden = self.h_projection(torch.cat((last_hidden[0],last_hidden[1]),dim=1))
@@ -113,16 +106,12 @@ class NMT(nn.Module):
     def decode(self, enc_hiddens: torch.Tensor, enc_masks: torch.Tensor,
                 dec_init_state: Tuple[torch.Tensor, torch.Tensor], target_padded: torch.Tensor) -> torch.Tensor:
         """对每个 batch 计算连接的输出向量
-        @param enc_hiddens (Tensor): 隐藏状态 (b, src_len, h*2),
-                                     b = batch size, src_len = 源句子的最大长度, h = hidden size.
-        @param enc_masks (Tensor): 句子掩码张量 (b, src_len),
-                                     b = batch size, src_len = 源句子的最大长度.
+        @param enc_hiddens (Tensor): 隐藏状态 (b, src_len, h*2), b = batch size, src_len = 源句子的最大长度, h = hidden size.
+        @param enc_masks (Tensor): 句子掩码张量 (b, src_len), b = batch size, src_len = 源句子的最大长度.
         @param dec_init_state (tuple(Tensor, Tensor)): deocder 初始的隐藏状态和细胞状态
-        @param target_padded (Tensor): 标准填充好的目标句子 (tgt_len, b),
-                                       tgt_len = 目标句子的最大长度, b = batch size.
+        @param target_padded (Tensor): 标准填充好的目标句子 (tgt_len, b), tgt_len = 目标句子的最大长度, b = batch size.
 
-        @returns combined_outputs (Tensor): 连接输出的张量  (tgt_len, b,  h),
-                                        tgt_len = 目标句子的最大长度, b = batch_size,  h = hidden size
+        @returns combined_outputs (Tensor): 连接输出的张量  (tgt_len, b,  h), tgt_len = 目标句子的最大长度, b = batch_size,  h = hidden size
         """
         # 在最大长度的句子中去掉<END>标识
         target_padded = target_padded[:-1]
@@ -130,7 +119,7 @@ class NMT(nn.Module):
         # 初始化解码器状态(隐藏和细胞)
         dec_state = dec_init_state
 
-        # 初始化上一步连接好的输出向量 o_{t-1}为0
+        # 初始化上一步连接好的输出向量 o_0为零向量
         batch_size = enc_hiddens.size(0)
         o_prev = torch.zeros(batch_size, self.hidden_size, device=self.device)
 
@@ -211,7 +200,7 @@ class NMT(nn.Module):
         """
         enc_masks = torch.zeros(enc_hiddens.size(0), enc_hiddens.size(1), dtype=torch.float)  # 掩码矩阵
         for e_id, src_len in enumerate(source_lengths):
-            enc_masks[e_id, src_len:] = 1  # 超过句子长度的地方置为1
+            enc_masks[e_id, src_len:] = 1  # 超过真实句子长度的地方置为1，如<pad>标记
         return enc_masks.to(self.device)
 
 

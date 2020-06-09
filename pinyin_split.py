@@ -82,8 +82,9 @@ class PinyinSplit:
         while start < length:
             count += 1
             if count == 2000:
+                print('error')
                 print(source, result)
-                break
+                exit(0)
             lastWrong = False
             first = source[start]
             step = 1
@@ -92,7 +93,7 @@ class PinyinSplit:
                 if start+i+1 > length:
                     break
                 piece = source[start:start+i+1]
-                if i == 0 and len(self.pinyin[first]) == 0:  # 非声母开头
+                if i == 0 and len(self.pinyin[first]) == 0:  # 非标准开头
                     lastWrong = True
                     # print(source,result,first)
                     result[-1] = result[-1][:-1]
@@ -104,14 +105,16 @@ class PinyinSplit:
                         step = i + 1
             if not lastWrong:
                 try:
-                    if (tmp == 'o' and len(piece) >1 and not self.hasComplete(piece[1:])) or (len(tmp) == 1 and tmp not in self.pinyin[tmp]) or (tmp == 'en' and len(result)>0 and result[-1][-1] in ['r','n','g']): # 哦了，u开头，可能
+                    if (tmp == 'o' and len(piece) >1 and not self.hasComplete(piece[1:])) or (len(tmp) == 1 and tmp not in self.pinyin[tmp]) or (tmp == 'en' and len(result)>0 and result[-1][-1] in ['r','n','g']): # 非标准开头，可能keneng
                         lastWrong = True
                         result[-1] = result[-1][:-1]
                         if len(result[-1]) == 0:
                             del result[-1]
                         start -= 1
                 except:
+                    print('lastWrong error')
                     print(source, result)
+                    exit(0)
             if lastWrong:
                 continue
             result.append(tmp)
